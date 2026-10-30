@@ -420,6 +420,13 @@ void term_grid_move_by(TermGrid *grid, int dx, int dy) {
 }
 
 void term_grid_cursor_next_line(TermGrid *grid) {
+    /* A character in the last column leaves the cursor one past the edge so
+       the next character can trigger autowrap. A line advance is itself cursor
+       movement, so clear that pending wrap while preserving the margin column;
+       otherwise the next character wraps a second time and skips a row. */
+    if (grid->cursor_x >= grid->cols) {
+        grid->cursor_x = grid->cols - 1;
+    }
     if (grid->cursor_y == grid->scroll_bottom) {
         term_grid_scroll(grid, 1);
     } else if (grid->cursor_y < grid->rows - 1) {
