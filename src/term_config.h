@@ -151,9 +151,12 @@ void term_config_defaults(TermConfig *config);
 /* Where the script is looked for, FIRST PLACE THAT HAS ONE WINNING:
 
      $GCL_TERMINAL_CONFIG                    a file named outright
-     $XDG_CONFIG_HOME/GnuChanTerm/GnuChanTerm.py
-     ~/.config/GnuChanTerm/GnuChanTerm.py
-     GnuChanTerm_config/GnuChanTerm.py       the copy the source tree ships
+     $XDG_CONFIG_HOME/GnuChanTerm/GnuChanTerm.conf
+     ~/.config/GnuChanTerm/GnuChanTerm.conf
+     GnuChanTerm_config/GnuChanTerm.conf    the copy the source tree ships
+
+   If no .conf is present, an existing GnuChanTerm.py is parsed safely as a
+   legacy file; its contents are never executed.
 
    The last one is relative to the working directory and is what lets a build
    run straight from the tree — `makefile.py run` — read the settings the tree
@@ -165,7 +168,7 @@ void term_config_defaults(TermConfig *config);
    Written into buffer, which is returned. `size` is how much room there is. */
 char *term_config_path(char *buffer, unsigned int size);
 
-/* Read the script at path into config. Returns 0 when the file was read and
+/* Read the settings at path into config. Returns 0 when the file was read and
    walked, -1 when it could not be opened or could not be parsed far enough to
    trust — a half-read config is never applied.
  *

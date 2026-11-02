@@ -15,8 +15,12 @@ purpose.
 The makefile installs the build dependencies with apt-get, compiles the sources,
 and re-runs itself through sudo to write into `/usr/local/bin`. It installs four
 things and not one: the binary (`/usr/local/bin/GnuChanTerm`), a terminfo entry
-for `gcl-256color`, a desktop entry, and the settings script under
-`~/.config/GnuChanTerm/`.
+for `gcl-256color`, a desktop entry, and the settings file
+`~/.config/GnuChanTerm/GnuChanTerm.conf`. The file uses plain `Key = value`
+lines (for example `Font = "monospace-11"` and `Color0 = "#16051f"`). An
+existing `GnuChanTerm.py` is read by a restricted legacy parser and never
+executed. Existing settings are preserved on reinstall; the shipped defaults
+are copied only when neither the `.conf` nor legacy file exists.
 
 The makefile takes an action as its first argument: `install` (the default),
 `build`, `run` and `uninstall`.

@@ -1,31 +1,9 @@
 /*
- * term_config.c — read the settings script, and push it onto the style.
+ * term_config.c — read Key = value settings and apply them to the style.
  *
- * The parser next door turns the script into statements; this file gives those
- * statements meaning. It is the only place that knows what `gcl_Terminal`
- * is, and the only place that knows a colour written "#09030d" is three bytes
- * and not seven characters.
- *
- * --- the script, in full ---
- *
- *     gcl_Terminal.call(
- *         Font="monospace-11",
- *         Colors=["#170a20", "#c084fc", ...],
- *         BarBackground="#09030d",
- *         BarForeground="#ead7ff",
- *     )
- *
- * or the same things written as assignments:
- *
- *     gcl_Terminal.font = "monospace-11"
- *     gcl_Terminal.colors = ["#170a20", ...]
- *     gcl_Terminal.bar_background = "#09030d"
- *     gcl_Terminal.bar_foreground = "#ead7ff"
- *
- * The two forms are read by the same code and are the same thing twice: the
- * call is what a file with a handful of settings reads like, and the
- * assignments are what a file being edited one line at a time reads like. A
- * script may use both.
+ * New .conf files use flat assignments such as Font = "monospace-11" and
+ * Color0 = "#16051f". Existing .py files remain supported by a restricted
+ * parser and are never executed.
  *
  * --- everything is optional, and that is the point ---
  *
@@ -186,6 +164,12 @@ char *term_config_path(char *buffer, unsigned int size) {
     const char *base = getenv("XDG_CONFIG_HOME");
     if (base != NULL && base[0] == '/') {
         snprintf(candidate, sizeof(candidate),
+                 "%s/GnuChanTerm/GnuChanTerm.conf", base);
+        if (path_is_readable(candidate)) {
+            snprintf(buffer, size, "%s", candidate);
+            return buffer;
+        }
+        snprintf(candidate, sizeof(candidate),
                  "%s/GnuChanTerm/GnuChanTerm.py", base);
         if (path_is_readable(candidate)) {
             snprintf(buffer, size, "%s", candidate);
@@ -199,6 +183,12 @@ char *term_config_path(char *buffer, unsigned int size) {
        because the file being looked for may be down at the tree's copy. */
     const char *home = getenv("HOME");
     if (home != NULL && home[0] != '\0') {
+        snprintf(candidate, sizeof(candidate),
+                 "%s/.config/GnuChanTerm/GnuChanTerm.conf", home);
+        if (path_is_readable(candidate)) {
+            snprintf(buffer, size, "%s", candidate);
+            return buffer;
+        }
         snprintf(candidate, sizeof(candidate),
                  "%s/.config/GnuChanTerm/GnuChanTerm.py", home);
         if (path_is_readable(candidate)) {
@@ -250,7 +240,20 @@ char *term_config_path(char *buffer, unsigned int size) {
             snprintf(level, sizeof(level), "%s", exe);
             for (int depth = 0; depth < 6; depth++) {
                 snprintf(candidate, sizeof(candidate),
+                         "%s/GnuChanTerm_config/GnuChanTerm.conf", level);
+                if (path_is_readable(candidate)) {
+                    snprintf(buffer, size, "%s", candidate);
+                    return buffer;
+                }
+                snprintf(candidate, sizeof(candidate),
                          "%s/GnuChanTerm_config/GnuChanTerm.py", level);
+                if (path_is_readable(candidate)) {
+                    snprintf(buffer, size, "%s", candidate);
+                    return buffer;
+                }
+                snprintf(candidate, sizeof(candidate),
+                         "%s/gnuchan_softwares/gcl_terminal/"
+                         "GnuChanTerm_config/GnuChanTerm.conf", level);
                 if (path_is_readable(candidate)) {
                     snprintf(buffer, size, "%s", candidate);
                     return buffer;
@@ -274,6 +277,10 @@ char *term_config_path(char *buffer, unsigned int size) {
     /* 5. The same copy, beside the working directory. A backstop for the case
        above — a session with no /proc, or a binary moved away from its tree
        while the working directory still holds one. */
+    if (path_is_readable("GnuChanTerm_config/GnuChanTerm.conf")) {
+        snprintf(buffer, size, "%s", "GnuChanTerm_config/GnuChanTerm.conf");
+        return buffer;
+    }
     if (path_is_readable("GnuChanTerm_config/GnuChanTerm.py")) {
         snprintf(buffer, size, "%s", "GnuChanTerm_config/GnuChanTerm.py");
         return buffer;
@@ -479,6 +486,21 @@ static void read_setting(TermConfig *config, const char *name,
         set_one_color(config, &config->cursor, value, "Cursor");
         return;
     }
+    if (strncmp(name, "Color", 5) == 0 && name[5] != '\0') {
+        char *end = NULL;
+        long index = strtol(name + 5, &end, 10);
+        if (end && *end == '\0' && index >= 0 &&
+            index < TERM_CONFIG_PALETTE_SIZE) {
+            char label[64];
+            snprintf(label, sizeof(label), "Color%ld (%s)", index,
+                     palette_name((int)index));
+            set_one_color(config, &config->palette[index], value, label);
+            return;
+        }
+    }
+    if (strcmp(name, "Version") == 0) {
+        return;
+    }
 
     /* A name this terminal does not know. It is said out loud and not silently
        dropped: `BarColour` and `BarBackground` look alike, and a person who
@@ -517,6 +539,7 @@ static void read_statement(TermConfig *config, const TermStatement *statement) {
     /* gcl_Terminal.field = value */
     const char *dot = strrchr(statement->target, '.');
     if (dot == NULL) {
+        read_setting(config, statement->target, &statement->value);
         return;
     }
     size_t object_length = (size_t)(dot - statement->target);
@@ -575,6 +598,25 @@ int term_config_load(TermConfig *config, const char *path) {
                  path, (why && why[0]) ? why : "it is not understood");
         config_note(config, message);
         return -1;
+    }
+
+    const char *extension = strrchr(path, '.');
+    int is_conf = extension && strcmp(extension, ".conf") == 0;
+    for (int i = 0; is_conf && i < count; i++) {
+        if (statements[i].kind != TERM_STMT_ASSIGN ||
+            strchr(statements[i].target, '.') != NULL) {
+            term_config_statements_free(statements, count);
+            config_note(config,
+                        "config.conf accepts scalar Key = value lines only");
+            return -1;
+        }
+        TermValueKind kind = statements[i].value.kind;
+        if (kind == TERM_VALUE_LIST || kind == TERM_VALUE_CALL) {
+            term_config_statements_free(statements, count);
+            config_note(config,
+                        "config.conf accepts scalar Key = value lines only");
+            return -1;
+        }
     }
 
     for (int i = 0; i < count; i++) {

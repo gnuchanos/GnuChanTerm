@@ -1,11 +1,8 @@
 /*
- * term_config_parser.h — enough of the Python grammar to read the settings
- * script, and nothing more.
+ * term_config_parser.h — restricted legacy config.py reader; no evaluation.
  *
- * The settings file is not a config format with Python in it; it is a Python
- * script, and the parts of the language it uses are the parts a person would
- * use to describe a terminal: a name given a value, and a call that passes
- * named arguments.
+ * The current format is plain Key = value lines. This parser remains for
+ * existing config.py files and accepts only a small fixed grammar.
  *
  *     font = "monospace-11"
  *     gcl_Terminal.set_background("#09030d")
@@ -89,7 +86,7 @@ struct TermStatement {
     int arg_count;
 };
 
-/* Parse the script at path. On success *out points at a newly allocated list
+/* Parse the legacy file at path. On success *out points at a newly allocated list
    of *out_count statements, which the caller frees with
    term_config_statements_free(). Returns 0 on success, -1 when the file cannot
    be read or contains a statement this grammar does not accept. */

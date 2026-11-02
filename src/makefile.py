@@ -13,10 +13,10 @@
 # itself through sudo rather than telling the user to.
 #
 # The install has FOUR parts and not one, exactly as the window manager's does:
-# the binary, the terminfo entry, the desktop entry, and the settings script.
-# The settings script is the one that was missing, and a terminal without it
+# the binary, the terminfo entry, the desktop entry, and the settings file.
+# The settings file is the one that was missing, and a terminal without it
 # runs on the palette compiled into it (gcl_palette.h) — which is why a fresh
-# install looked unchanged whatever the shipped GnuChanTerm.py said. See
+# install looked unchanged whatever the shipped .conf said. See
 # install_config() and term_config_path() in term_config.c.
 #
 # License: GPL3
@@ -50,15 +50,15 @@ BIN_DIR = Path("/usr/local/bin")
 APPS_DIR = Path("/usr/share/applications")
 DESKTOP_FILE = APPS_DIR / "gnuchanterm.desktop"
 
-# The settings script, installed into the user's own config directory. The
+# The settings file, installed into the user's own config directory. The
 # terminal reads it from there — see term_config_path() in term_config.c — so a
 # machine that never had one gets the shipped file written where it looks. This
 # is the step that was missing: without it the terminal kept the built-in
 # palette and looked identical to the terminal as it shipped, which reads as
 # "the settings file does nothing".
-CONFIG_SOURCE = ROOT / "GnuChanTerm_config" / "GnuChanTerm.py"
+CONFIG_SOURCE = ROOT / "GnuChanTerm_config" / "GnuChanTerm.conf"
 CONFIG_DIR_NAME = "GnuChanTerm"
-CONFIG_FILE_NAME = "GnuChanTerm.py"
+CONFIG_FILE_NAME = "GnuChanTerm.conf"
 
 # The terminfo entry, which is what makes the terminal's name mean something.
 # It goes in the system database so every program on the machine resolves
@@ -394,7 +394,7 @@ def install_terminfo() -> None:
 def invoking_user() -> tuple[Path, int, int] | None:
     """The home and ids of the person who ran sudo, not root.
 
-    The settings script belongs to the person who logs in, and the terminal
+    The settings file belongs to the person who logs in, and the terminal
     reads it from their home. Under sudo, HOME and the ids are root's, so the
     original user is read back from SUDO_USER — the one piece of the invoking
     session sudo keeps. Returns None when there is nothing sensible to write
@@ -412,19 +412,7 @@ def invoking_user() -> tuple[Path, int, int] | None:
 
 
 def install_config() -> None:
-    """Put the settings script where the terminal will read it.
-
-    The installed script is replaced on every run, not kept, exactly as the
-    window manager's own installer replaces its script: this installer owns
-    that file, and a machine that installs a new build has to get the settings
-    that build ships with rather than whichever script happened to be there.
-    The old file is removed first — an install that only copied over it would
-    leave a script the terminal is reading change underneath it, and the copy
-    is a fresh file either way.
-
-    The terminal reads the script once, at start; nothing here needs to reload
-    it, and the next launch picks the new one up.
-    """
+    """Install defaults without replacing the user's settings."""
     if not CONFIG_SOURCE.is_file():
         return
     user = invoking_user()
@@ -447,12 +435,19 @@ def install_config() -> None:
 
     directory.mkdir(parents=True, exist_ok=True)
 
-    # The old script is taken out before the new one is put in place, so the
-    # result is the shipped file and nothing of what was there before. A
-    # missing file is not an error: a first install has nothing to remove.
+    legacy_target = directory / "GnuChanTerm.py"
+    if not target.exists() and legacy_target.exists():
+        detail(f"kept legacy settings file {legacy_target}")
+        return
+
     if target.exists():
-        target.unlink()
-        detail(f"removed the old {target}")
+        detail(f"kept the existing {target}")
+        try:
+            os.chown(directory, uid, gid)
+            os.chown(target, uid, gid)
+        except OSError:
+            pass
+        return
 
     shutil.copyfile(CONFIG_SOURCE, target)
 
@@ -476,10 +471,10 @@ def uninstall() -> None:
     # The terminfo entry is left behind on purpose: another terminal may have
     # been built from it, and removing a name that is in use is worse than a
     # stale entry.
-    # The settings script is left behind for the same kind of reason: it is the
-    # user's own colours, and an uninstall that took them away would undo an
+    # The settings file is left behind for the same kind of reason: it is the
+    # user's own colours, and an uninstall that took it away would undo an
     # edit the person made.
-    note(f"The settings script under ~/.config/{CONFIG_DIR_NAME}/ was left alone.")
+    note(f"The settings under ~/.config/{CONFIG_DIR_NAME}/ were left alone.")
 
 
 def run_terminal(binary: Path) -> int:
