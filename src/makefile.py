@@ -4,6 +4,7 @@
 # -----------------------------------------------------------------------------
 #     python3 makefile.py            install the packages, build, install
 #     python3 makefile.py build      compile only
+#     python3 makefile.py test       run focused unit tests
 #     python3 makefile.py run        compile and start on the current display
 #     python3 makefile.py uninstall  remove the binary and the desktop entry
 #
@@ -77,6 +78,7 @@ SOURCES = (
     "term_style.c",
     "term_image.c",
     "term_pty.c",
+    "term_prompt.c",
     "term_render.c",
     "term_input.c",
     "term_select.c",
@@ -97,6 +99,7 @@ HEADERS = (
     "term_style.h",
     "term_image.h",
     "term_pty.h",
+    "term_prompt.h",
     "term_render.h",
     "gnuchan_lang.h",
     "term_render_internal.h",
@@ -321,6 +324,28 @@ def build() -> Path:
     return output
 
 
+def test() -> int:
+    """Compile and run the prompt-escape regression test."""
+    compiler = shutil.which("gcc")
+    if compiler is None:
+        raise SystemExit("error: gcc is required to run tests")
+
+    binary = ROOT / "tests" / ".test_prompt"
+    command = [
+        compiler, "-std=c99", "-Wall", "-Wextra", "-Werror",
+        str(ROOT / "term_prompt.c"),
+        str(ROOT / "tests" / "test_prompt.c"),
+        "-o", str(binary),
+    ]
+    try:
+        step("Running prompt regression test")
+        if run(command, cwd=ROOT).returncode != 0:
+            return 1
+        return run([str(binary)], cwd=ROOT).returncode
+    finally:
+        binary.unlink(missing_ok=True)
+
+
 def desktop_entry() -> str:
     return "\n".join([
         "[Desktop Entry]",
@@ -508,7 +533,7 @@ def main() -> int:
         )
 
     action = sys.argv[1] if len(sys.argv) > 1 else "install"
-    known = ("install", "build", "run", "uninstall")
+    known = ("install", "build", "test", "run", "uninstall")
     if action not in known:
         print(f"error: unknown action '{action}'", file=sys.stderr)
         print("usage: python3 makefile.py [" + "|".join(known) + "]",
@@ -526,6 +551,9 @@ def main() -> int:
         binary = build()
         print(f"Built {binary}.")
         return 0
+
+    if action == "test":
+        return test()
 
     if action == "run":
         return run_terminal(build())

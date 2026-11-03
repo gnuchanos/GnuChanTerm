@@ -101,6 +101,7 @@
 #include "term_render.h"
 #include "term_input.h"
 #include "term_style.h"
+#include "term_prompt.h"
 #include "gnuchan_lang.h"
 
 /* The name this terminal answers to. See the file comment for why it is not
@@ -137,7 +138,8 @@
  * this terminal has to say about itself and an inherited one from the shell
  * that started us would be another terminal's name.
  */
-static void build_env(char **env, int *env_count, const char *prompt) {
+static void build_env(char **env, int *env_count, const char *prompt,
+                      const char *shell) {
     extern char **environ;
     int count = 0;
     int has_prompt = prompt != NULL && prompt[0] != '\0';
@@ -177,11 +179,10 @@ static void build_env(char **env, int *env_count, const char *prompt) {
     env[count++] = color_var;
     env[count++] = program_var;
 
-    /* The prompt, when the settings script named one. All three are static for
-       the same reason the three above are: the pointers outlive this function
-       in the child's image only long enough for execvp() to read them. The
-       text is carried through exactly as written — the \u, \h and \w in it are
-       the shell's own escapes, and it is the shell that expands them.
+    /* The prompt, when the settings script named one. Its environment strings
+       are static for the same reason the three above are: the pointers outlive
+       this function in the child's image only long enough for execvp() to read
+       them. Bash receives the text as written; Zsh receives its prompt syntax.
      *
      * The command is a FIXED string with no prompt text in it, and that is the
      * point: the shell reads it as a command, so a prompt holding a quote, a
@@ -193,21 +194,24 @@ static void build_env(char **env, int *env_count, const char *prompt) {
         static char prompt_value[TERM_CONFIG_TEXT_LENGTH * 3 + 64];
         static char prompt_command[] =
             "PROMPT_COMMAND=PS1=\"$GCL_TERM_PROMPT\"";
+        static char prompt_for_shell[TERM_CONFIG_TEXT_LENGTH * 2];
 
-        /* The prompt goes in exactly as the settings script wrote it. It used
-           to be wrapped in the OSC 133 semantic-prompt markers, which existed
-           for the terminal's own command suggestion — reading the line off the
-           grid needs to know where the prompt ended. That feature is gone, so
-           the markers are gone with it, and the prompt is now simply the text
-           the user asked for. The shell's own \u, \h and \w escapes are still
-           left to the shell to expand, as they always were. */
-        snprintf(prompt_ps1, sizeof(prompt_ps1), "PS1=%s", prompt);
+        /* Prompt settings use Bash's PS1 spelling. Zsh has different prompt
+           escapes: its nonprinting markers are %{ and %}, and it uses %n,
+           %m and %~ for the user, host and working directory. Translate that
+           dialect before passing it on, including turning \e into the actual
+           control byte so SGR colors still reach the VT parser. */
+        term_prompt_for_shell(prompt, shell, prompt_for_shell,
+                              sizeof(prompt_for_shell));
+        snprintf(prompt_ps1, sizeof(prompt_ps1), "PS1=%s", prompt_for_shell);
         snprintf(prompt_value, sizeof(prompt_value),
-                 "GCL_TERM_PROMPT=%s", prompt);
+                 "GCL_TERM_PROMPT=%s", prompt_for_shell);
 
         env[count++] = prompt_ps1;
         env[count++] = prompt_value;
-        env[count++] = prompt_command;
+        if (!term_prompt_is_zsh(shell)) {
+            env[count++] = prompt_command;
+        }
     }
 
     env[count] = NULL;
@@ -230,6 +234,7 @@ static int start_shell(TermCore *core, int argc, char **argv,
        shell is run as a login shell. */
     char *shell_argv[TERM_PTY_MAX_ARGS];
     int shell_argc = 0;
+    const char *shell = NULL;
     int c = 0;
     for (c = 1; c < argc - 1; c++) {
         if (strcmp(argv[c], "-e") == 0) {
@@ -252,7 +257,7 @@ static int start_shell(TermCore *core, int argc, char **argv,
          * runs bash was handed a shell they never use, in a session that looked
          * like nothing else on their desktop. The passwd entry is what `login`
          * itself uses, and it is the user's choice rather than ours. */
-        const char *shell = getenv("SHELL");
+        shell = getenv("SHELL");
         if (shell == NULL || *shell == '\0') {
             struct passwd *pw = getpwuid(getuid());
             if (pw != NULL && pw->pw_shell != NULL &&
@@ -274,7 +279,7 @@ static int start_shell(TermCore *core, int argc, char **argv,
 
     char *env[TERM_ENV_MAX];
     int env_count = 0;
-    build_env(env, &env_count, prompt);
+    build_env(env, &env_count, prompt, shell);
 
     if (term_pty_spawn(pty, shell_argv, env, core->cols, core->rows) != 0) {
         fprintf(stderr, "%s\n", gnuchan_lang_t("term_cannot_start_shell"));

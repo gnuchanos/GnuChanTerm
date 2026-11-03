@@ -23,7 +23,12 @@ executed. Existing settings are preserved on reinstall; the shipped defaults
 are copied only when neither the `.conf` nor legacy file exists.
 
 The makefile takes an action as its first argument: `install` (the default),
-`build`, `run` and `uninstall`.
+`build`, `test`, `run` and `uninstall`. `test` runs the focused shell-prompt
+escape regression test without installing the terminal's dependencies.
+
+`Prompt` uses Bash-style prompt escapes (for example `\u`, `\w` and `\e`).
+When the selected shell is Zsh, those escapes are translated to Zsh's prompt
+syntax, including its nonprinting color-sequence markers.
 
 ## Dependencies
 
