@@ -205,26 +205,6 @@ void term_grid_free(TermGrid *grid) {
     grid->cols = 0;
 }
 
-/* Give a line a buffer of a new width, keeping as much of what was on it as
-   still fits. The old buffer is freed and the new one is blank beyond what was
-   copied, which is what a narrower window makes of a long line: the text that
-   no longer fits is gone, and the rest is where it was. */
-static int line_rewidth(TermGrid *grid, int y, int new_cols) {
-    TermCell *fresh = line_alloc(new_cols);
-    if (fresh == NULL) {
-        return -1;
-    }
-    TermLine *line = &grid->lines[y];
-    int keep = grid->cols < new_cols ? grid->cols : new_cols;
-    if (line->cells != NULL) {
-        memcpy(fresh, line->cells, (size_t)keep * sizeof(TermCell));
-        free(line->cells);
-    }
-    line->cells = fresh;
-    line->dirty = 1;
-    return 0;
-}
-
 int term_grid_resize(TermGrid *grid, int cols, int rows) {
     if (cols < 1) cols = 1;
     if (rows < 1) rows = 1;
@@ -281,11 +261,45 @@ int term_grid_resize(TermGrid *grid, int cols, int rows) {
     }
 
     if (cols != grid->cols) {
+        /* Rewidth every line into a fresh buffer before committing any of them.
+           Allocating and swapping one line at a time would leave earlier lines
+           sized for the new width while grid->cols (and every bounds check that
+           reads it) still describes the old one if a later allocation failed, so
+           a reader would walk past a buffer that is already smaller or larger
+           than it believes. Keeping the old state intact on failure avoids that
+           partial resize. */
+        TermCell **fresh = (TermCell **)calloc((size_t)grid->rows,
+                                               sizeof(TermCell *));
+        if (fresh == NULL) {
+            return -1;
+        }
+        int old_cols = grid->cols;
+        int keep = old_cols < cols ? old_cols : cols;
+        int failed = 0;
         for (int y = 0; y < grid->rows; y++) {
-            if (line_rewidth(grid, y, cols) != 0) {
-                return -1;
+            fresh[y] = line_alloc(cols);
+            if (fresh[y] == NULL) {
+                failed = 1;
+                break;
+            }
+            if (grid->lines[y].cells != NULL) {
+                memcpy(fresh[y], grid->lines[y].cells,
+                       (size_t)keep * sizeof(TermCell));
             }
         }
+        if (failed) {
+            for (int y = 0; y < grid->rows; y++) {
+                free(fresh[y]);
+            }
+            free(fresh);
+            return -1;
+        }
+        for (int y = 0; y < grid->rows; y++) {
+            free(grid->lines[y].cells);
+            grid->lines[y].cells = fresh[y];
+            grid->lines[y].dirty = 1;
+        }
+        free(fresh);
         grid->cols = cols;
     }
 

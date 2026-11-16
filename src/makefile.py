@@ -57,7 +57,7 @@ DESKTOP_FILE = APPS_DIR / "gnuchanterm.desktop"
 # is the step that was missing: without it the terminal kept the built-in
 # palette and looked identical to the terminal as it shipped, which reads as
 # "the settings file does nothing".
-CONFIG_SOURCE = ROOT / "GnuChanTerm_config" / "GnuChanTerm.conf"
+CONFIG_SOURCE = ROOT / "config" / "config.conf"
 CONFIG_DIR_NAME = "GnuChanTerm"
 CONFIG_FILE_NAME = "GnuChanTerm.conf"
 
@@ -350,7 +350,7 @@ def desktop_entry() -> str:
     return "\n".join([
         "[Desktop Entry]",
         "Type=Application",
-        "Name=GnuChanTerm",
+        "Name=GnuChan Term",
         "Comment=GnuchanOS terminal",
         f"Exec={BIN_DIR / PROGRAM}",
         f"TryExec={BIN_DIR / PROGRAM}",

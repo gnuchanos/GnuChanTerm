@@ -153,7 +153,7 @@ void term_config_defaults(TermConfig *config);
      $GCL_TERMINAL_CONFIG                    a file named outright
      $XDG_CONFIG_HOME/GnuChanTerm/GnuChanTerm.conf
      ~/.config/GnuChanTerm/GnuChanTerm.conf
-     GnuChanTerm_config/GnuChanTerm.conf    the copy the source tree ships
+     src/config/config.conf                the copy the source tree ships
 
    If no .conf is present, an existing GnuChanTerm.py is parsed safely as a
    legacy file; its contents are never executed.

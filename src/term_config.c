@@ -106,7 +106,7 @@ static int path_is_readable(const char *path) {
  *   ~/.config/...           the same location for a session that never set
  *                           XDG_CONFIG_HOME, which is most of them.
  *
- *   <exe>/GnuChanTerm_config/...  the copy the SOURCE TREE ships, found from
+ *   <exe>/../src/config/config.conf  the copy the SOURCE TREE ships, found from
  *                           the running BINARY and not from the working
  *                           directory. That distinction is the whole of this
  *                           step: a terminal started by the window manager, by
@@ -122,7 +122,7 @@ static int path_is_readable(const char *path) {
  *                           tree, with no install, read the settings the tree
  *                           ships.
  *
- *   GnuChanTerm_config/...  the same copy, relative to the working directory.
+ *   src/config/config.conf  the same copy, relative to the working directory.
  *                           It is kept and tried after the one above because it
  *                           is what a person running the binary by hand, from
  *                           the source directory, has always had; the check
@@ -240,6 +240,19 @@ char *term_config_path(char *buffer, unsigned int size) {
             snprintf(level, sizeof(level), "%s", exe);
             for (int depth = 0; depth < 6; depth++) {
                 snprintf(candidate, sizeof(candidate),
+                         "%s/src/config/config.conf", level);
+                if (path_is_readable(candidate)) {
+                    snprintf(buffer, size, "%s", candidate);
+                    return buffer;
+                }
+                snprintf(candidate, sizeof(candidate),
+                         "%s/config/config.conf", level);
+                if (path_is_readable(candidate)) {
+                    snprintf(buffer, size, "%s", candidate);
+                    return buffer;
+                }
+                /* Read the pre-standardization source layout for old checkouts. */
+                snprintf(candidate, sizeof(candidate),
                          "%s/GnuChanTerm_config/GnuChanTerm.conf", level);
                 if (path_is_readable(candidate)) {
                     snprintf(buffer, size, "%s", candidate);
@@ -277,6 +290,15 @@ char *term_config_path(char *buffer, unsigned int size) {
     /* 5. The same copy, beside the working directory. A backstop for the case
        above — a session with no /proc, or a binary moved away from its tree
        while the working directory still holds one. */
+    if (path_is_readable("src/config/config.conf")) {
+        snprintf(buffer, size, "%s", "src/config/config.conf");
+        return buffer;
+    }
+    if (path_is_readable("config/config.conf")) {
+        snprintf(buffer, size, "%s", "config/config.conf");
+        return buffer;
+    }
+    /* Compatibility with source trees that still use the old config folder. */
     if (path_is_readable("GnuChanTerm_config/GnuChanTerm.conf")) {
         snprintf(buffer, size, "%s", "GnuChanTerm_config/GnuChanTerm.conf");
         return buffer;
